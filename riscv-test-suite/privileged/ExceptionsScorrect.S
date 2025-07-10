@@ -23,7 +23,7 @@ RVMODEL_BOOT
 RVTEST_CODE_BEGIN
 
 #ifdef TEST_CASE_1
-    RVTEST_CASE(1,"//check ISA:=regex(.*I.*Zicsr.*); def rvtest_mtrap_routine=True; def rvtest_strap_routine=True; def rvtest_dtrap_routine=True; def TEST_CASE_1=True",ExceptionsS)
+    RVTEST_CASE(1,"//check ISA:=regex(.*I.*Zicsr.*blocked.*); def rvtest_mtrap_routine=True; def rvtest_strap_routine=True; def rvtest_dtrap_routine=True; def TEST_CASE_1=True",ExceptionsS)
     RVTEST_SIGBASE( x3,signature_base)
 //BLOCKED.*
 	.attribute unaligned_access, 0
@@ -33,8 +33,6 @@ RVTEST_CODE_BEGIN
 
 main:
 
-# li t0, 0x100      # Bit 8 set → delegate ECALL from U-mode to S-mode
-# csrw medeleg, t0
 
  # set up PMP so user and supervisor mode can access full address space
     csrw pmpcfg0, 0xF   # configure PMP0 to TOR RWX
@@ -58,9 +56,9 @@ main:
 
 
     // Set up the trap handler
-    # la t0, s_traphandler
-    # csrw stvec, t0
-    # nop
+    la t0, s_traphandler
+    csrw stvec, t0
+    nop
 
     // Call the cp_medeleg function in the three privilege modes
 
@@ -468,53 +466,53 @@ finished:
 //
 // Any other exception is delegated by skipping over the instruction by incrementing by 4 (assumes only
 // uncompressed instructions are used).
-# s_traphandler:
-#     # Load trap handler stack pointer tp
-#     csrrw tp, sscratch, tp  // swap SSCRATCH and tp
-#     SREG t0, 0(tp)          // Save t0, t1, and ra on the stack
-#     SREG t1, -8(tp)
-#     SREG s7, -16(tp)
+s_traphandler:
+    # Load trap handler stack pointer tp
+    csrrw tp, sscratch, tp  // swap SSCRATCH and tp
+    SREG t0, 0(tp)          // Save t0, t1, and ra on the stack
+    SREG t1, -8(tp)
+    SREG s7, -16(tp)
 
-#     csrr   s7, sepc         // Load faulting instruction address from sepc
+    csrr   s7, sepc         // Load faulting instruction address from sepc
 
-#     // Check if the exception was caused by an access fault
-#     csrr   t1, scause            // t1 = exception cause
-#     li t0, 1                     // Exception cause code 1 means Instruction Access Fault
-#     bne    t1, t0, IAF_skip      // If not an IAF, skip ra load
-#     // If it was an instruction access fault our program uses a jalr to jump to the fault address.
-#     // A jalr sets rd = PC +4, so we need to subtract 4 from the return address to get the address
-#     // of the faulting instruction.
-#     addi  ra, ra, -4
-#     csrw sepc, ra           // save ra to sepc if its an IAF
-# IAF_skip:
+    // Check if the exception was caused by an access fault
+    csrr   t1, scause            // t1 = exception cause
+    li t0, 1                     // Exception cause code 1 means Instruction Access Fault
+    bne    t1, t0, IAF_skip      // If not an IAF, skip ra load
+    // If it was an instruction access fault our program uses a jalr to jump to the fault address.
+    // A jalr sets rd = PC +4, so we need to subtract 4 from the return address to get the address
+    // of the faulting instruction.
+    addi  ra, ra, -4
+    csrw sepc, ra           // save ra to sepc if its an IAF
+IAF_skip:
 
-#     csrr t0, scause
-#     li t1, 8                 // is it an ecall trap?
-#     andi t0, t0, 0xFC        // if CAUSE = 8, 9, or 11
-#     bne t0, t1, s_trap_ecall_skip  // ignore other exceptions
+    csrr t0, scause
+    li t1, 8                 // is it an ecall trap?
+    andi t0, t0, 0xFC        // if CAUSE = 8, 9, or 11
+    bne t0, t1, s_trap_ecall_skip  // ignore other exceptions
 
-#     // Restore registers before going into machine trap handler
-#     LREG t0, 0(tp)          // Restore t0, t1, and s7
-#     LREG t1, -8(tp)
-#     LREG s7, -16(tp)
-#     csrrw tp, sscratch, tp   // Restore tp
+    // Restore registers before going into machine trap handler
+    LREG t0, 0(tp)          // Restore t0, t1, and s7
+    LREG t1, -8(tp)
+    LREG s7, -16(tp)
+    csrrw tp, sscratch, tp   // Restore tp
 
-#     addi   a0, a0, 5        // Changes inputs to 5, 6, 7, or 8 (signals that it was an ecall from the s_traphandler)
-#     ecall                   // Trap to M-mode, where the privilege change is handled
+    addi   a0, a0, 5        // Changes inputs to 5, 6, 7, or 8 (signals that it was an ecall from the s_traphandler)
+    ecall                   // Trap to M-mode, where the privilege change is handled
 
-# s_trap_ecall_skip:
+s_trap_ecall_skip:
 
-#     csrr t1, sepc
-#     addi t1, t1, 4         // Add 4 to sepc kip over uncompressed instruction
-#     csrw sepc, t1
+    csrr t1, sepc
+    addi t1, t1, 4         // Add 4 to sepc kip over uncompressed instruction
+    csrw sepc, t1
 
-#     // Restore t0, t1, and ra
-#     LREG t0, 0(tp)
-#     LREG t1, -8(tp)
-#     LREG s7, -16(tp)
-#     csrrw tp, sscratch, tp   // restore tp
+    // Restore t0, t1, and ra
+    LREG t0, 0(tp)
+    LREG t1, -8(tp)
+    LREG s7, -16(tp)
+    csrrw tp, sscratch, tp   // restore tp
 
-#     sret
+    sret
 
 // Function: cp_medeleg
 // Tests instructions when medeleg = all 1's, all 0's, and walking 1's.
@@ -1016,8 +1014,7 @@ signature_base:
 tsig_begin_canary:
 CANARY;
 mtrap_sigptr:
-.fill 22000*(XLEN/32),4,0xb0bacafe
-
+.fill 600*(XLEN/32),4,0xb0bacafe
 
 #Prof Harris mentioned we should probably start with 10000
 tsig_end_canary:
