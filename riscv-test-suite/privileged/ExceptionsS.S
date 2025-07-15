@@ -33,12 +33,10 @@ RVTEST_CODE_BEGIN
 
 main:
 
-# li t0, 0x100      # Bit 8 set → delegate ECALL from U-mode to S-mode
-# csrw medeleg, t0
 
  # set up PMP so user and supervisor mode can access full address space
     csrw pmpcfg0, 0xF   # configure PMP0 to TOR RWX
-    li t0, 0xFFFFFFFF
+    LI(t0, 0xFFFFFFFF)
     csrw pmpaddr0, t0   # configure PMP0 top of range to 0xFFFFFFFF to allow all 32-bit addresses
     csrw satp, x0       # turn off satp to disable VM 
 
@@ -46,15 +44,6 @@ main:
     RVTEST_GOTO_MMODE   
     RVTEST_GOTO_LOWER_MODE Smode 
 
-    // ExceptionsS.S tests for delgated ecalls from user mode to supervisor mode.
-    // To return back to machine mode the s_traphandler in ExceptionsS.S executes an ecall
-    // To signal to the machine mode trap handler that this call was issued from supervisor mode
-    // the a0 register inputs are 5-9.  The machine mode trap handler will then use sepc instead
-    // of mepc to return to the instruction that caused the exception.
-    // Reserved a0 values:
-    //   5: Change to user mode       (mret to address in sepc)
-    //   6: Change to supervisor mode (mret to address in sepc)
-    //   8: Change to machine mode    (mret to address in sepc)
 
 
     // Set up the trap handler
@@ -79,19 +68,19 @@ main:
     // Covers the supervisor mode coverpoints from cp_stvec and cp_medeleg_msu
     // Call the cp_medeleg function
     //  a0 = 1 (supervisor mode)
-    li a0, 1
+    LI(a0, 1)
     jal ra, cp_medeleg
 
     // Covers the user mode coverpoints from cp_stvec and cp_medeleg_msu
     // Call the cp_medeleg function
     //   a0 = 0 (user mode)
-    li a0, 0
+    LI(a0, 0)
     jal ra, cp_medeleg
 
     // Call the cp_medeleg function
     //   a0 = 3 (machine mode)
     // Covers the machine mode coverpoints from cp_stvec and cp_medeleg_msu
-    li a0, 3
+    LI(a0, 3)
     jal ra, cp_medeleg
 
     // Test the remaining supervisor mode coverpoints that
@@ -102,18 +91,19 @@ main:
     RVTEST_GOTO_MMODE   # M-mode  
 
     // Write zeros to medeleg
-    li a4, 0
+    LI(a4, 0)
     csrw medeleg, a4
     nop
 
     // Enter supervisor privilege mode
     RVTEST_GOTO_LOWER_MODE Smode 
 
+
     /////////////////////////////////
     //cp_instr_adr_misaligned_branch
     /////////////////////////////////
 
-    li t1,1        // load a test value
+    LI(t1, 1)        // load a test value
     .align 2       // align the next instruction to a 4 byte boundary
 
     // test all six types of taken branches to a misaligned address
@@ -150,7 +140,7 @@ main:
 
     // these branches are not taken so there should be no exception
 
-    li t1,1        // load a test value
+    LI(t1, 1)        // load a test value
     .align 2       // align the next instruction to a 4 byte boundary
 
     beq x0, t1, .+6
@@ -177,7 +167,7 @@ main:
     //cp_illegal_instruction_seed
     /////////////////////////////////
 
-    // Throws illegal instruction in machine mode
+    // Throws illegal instruction in machine mode and supervisor mode
     csrrs  t1, seed, x0
     nop
     csrrc  t2, seed, x0
@@ -208,19 +198,19 @@ main:
     /////////////////////////////////
 
     // prepare masks
-    li   t0, 8        // (1 << 3) bit 3 in mstatus is the MIE bit
-    li   t1, 2        // (1 << 1) bit 1 in mstatus is the SIE bit
+    LI(t0, 8)        // (1 << 3) bit 3 in mstatus is the MIE bit
+    LI(t1, 2)        // (1 << 1) bit 1 in sstatus is the SIE bit
+   // LI(t2,128)  //(1<<7) bit 7 in mstatus is MPIE bit
 
     // supervisor_mode:
 
     // Machine mode setup since other modes cannot modify CSRs
     RVTEST_GOTO_MMODE   # M-mode  
 
-
     // mstatus_MIE = {0}, sstatus_SIE = {0}, medeleg_b8 = {0}
     csrc mstatus, t0
-    nop
-    csrc mstatus, t1
+    nop    
+    csrc sstatus, t1
     nop
     // enter privilege mode being tested
     RVTEST_GOTO_LOWER_MODE Smode 
@@ -228,56 +218,72 @@ main:
 
     // test ecall (enter machine privilege mode)
     RVTEST_GOTO_MMODE   # M-mode  
-
 
     // mstatus_MIE = {1}, sstatus_SIE = {0}, medeleg_b8 = {0}
     csrs mstatus, t0
     nop
-    csrc mstatus, t1
+    csrc sstatus, t1
     nop
+    # nop
+
     // enter privilege mode being tested
-    RVTEST_GOTO_LOWER_MODE Smode 
-
-
+    # RVTEST_GOTO_LOWER_MODE Smode 
+    li a0, 0
+    ecall
+    nop
+    
     // test ecall (enter machine privilege mode)
     RVTEST_GOTO_MMODE   # M-mode  
 
 
-    // mstatus_MIE = {0}, sstatus_SIE = {1}, medeleg_b8 = {0}
+
+
+
+
+
+
+    // mstatus_MIE = {0}, sstatus_SIE = {1}, medeleg_b8 = {0}  
     csrc mstatus, t0
     nop
-    csrs mstatus, t1
+    csrs sstatus, t1
     nop
     // enter privilege mode being tested
-    RVTEST_GOTO_LOWER_MODE Smode 
-
+    //RVTEST_GOTO_LOWER_MODE Smode 
+    li a0, 0
+    ecall
+    nop
 
     // test ecall (enter machine privilege mode)
     RVTEST_GOTO_MMODE   # M-mode  
 
 
-    // mstatus_MIE = {1}, sstatus_SIE = {1}, medeleg_b8 = {0}
+    // mstatus_MIE = {1}, sstatus_SIE = {1}, medeleg_b8 = {0} !!!!!
     csrs mstatus, t0
     nop
-    csrs mstatus, t1
+    csrs sstatus, t1
     nop
     // enter privilege mode being tested
-    RVTEST_GOTO_LOWER_MODE Smode 
+    //RVTEST_GOTO_LOWER_MODE Smode 
 
 
     // test ecall (enter machine privilege mode)
     RVTEST_GOTO_MMODE   # M-mode  
+    li a0, 0
+    ecall
+    nop
+
+
 
 
     // mstatus_MIE = {0}, sstatus_SIE = {0}, medeleg_b8 = {1}
     // change medeleg bit 8 (for this and the next supervisor tests)
-    li a4, 256        // (1<<8) bit 8 in medeleg is the ecallu delegation bit
+    LI(a4, 256)        // (1<<8) bit 8 in medeleg is the ecallu delegation bit
     csrs medeleg, a4  // set bit 8 in medeleg
     nop
     // update mie and sie bits
     csrc mstatus, t0
     nop
-    csrc mstatus, t1
+    csrc sstatus, t1
     nop
     // enter privilege mode being tested
     RVTEST_GOTO_LOWER_MODE Smode 
@@ -291,7 +297,7 @@ main:
     // update mie and sie bits
     csrs mstatus, t0
     nop
-    csrc mstatus, t1
+    csrc sstatus, t1
     nop
     // enter privilege mode being tested
     RVTEST_GOTO_LOWER_MODE Smode 
@@ -301,11 +307,11 @@ main:
     RVTEST_GOTO_MMODE   # M-mode  
 
 
-    // mstatus_MIE = {0}, sstatus_SIE = {1}, medeleg_b8 = {1}
+    // mstatus_MIE = {0}, sstatus_SIE = {1}, medeleg_b8 = {1} 
     // update mie and sie bits
     csrc mstatus, t0
     nop
-    csrs mstatus, t1
+    csrs sstatus, t1
     nop
     // enter privilege mode being tested
     RVTEST_GOTO_LOWER_MODE Smode 
@@ -319,7 +325,7 @@ main:
     // update mie and sie bits
     csrs mstatus, t0
     nop
-    csrs mstatus, t1
+    csrs sstatus, t1
     nop
     // enter privilege mode being tested
     RVTEST_GOTO_LOWER_MODE Smode 
@@ -332,13 +338,13 @@ main:
     // User_mode:
 
     // change medeleg bit 8 (for this and the next user tests)
-    li a4, 256        // (1<<8) bit 8 in medeleg is the ecallu delegation bit
+    LI(a4, 256)        // (1<<8) bit 8 in medeleg is the ecallu delegation bit
     csrc medeleg, a4  // clear bit 8 in medeleg
     nop 
     // mstatus_MIE = {0}, sstatus_SIE = {0}, medeleg_b8 = {0}
     csrc mstatus, t0
     nop
-    csrc mstatus, t1
+    csrc sstatus, t1
     nop
     // enter privilege mode being tested (user mode)
     RVTEST_GOTO_LOWER_MODE Umode 
@@ -350,7 +356,7 @@ main:
     // mstatus_MIE = {1}, sstatus_SIE = {0}, medeleg_b8 = {0}
     csrs mstatus, t0
     nop
-    csrc mstatus, t1
+    csrc sstatus, t1
     nop
     // enter privilege mode being tested (user mode)
     RVTEST_GOTO_LOWER_MODE Umode 
@@ -362,7 +368,7 @@ main:
     // mstatus_MIE = {0}, sstatus_SIE = {1}, medeleg_b8 = {0}
     csrc mstatus, t0
     nop
-    csrs mstatus, t1
+    csrs sstatus, t1
     nop
     // enter privilege mode being tested
     RVTEST_GOTO_LOWER_MODE Umode 
@@ -374,7 +380,7 @@ main:
     // mstatus_MIE = {1}, sstatus_SIE = {1}, medeleg_b8 = {0}
     csrs mstatus, t0
     nop
-    csrs mstatus, t1
+    csrs sstatus, t1
     nop
     // enter privilege mode being tested
     RVTEST_GOTO_LOWER_MODE Umode 
@@ -385,14 +391,14 @@ main:
 
     // mstatus_MIE = {0}, sstatus_SIE = {0}, medeleg_b8 = {1}
     // change medeleg bit 8 (for the current and following test)
-    li a4, 256        //  (1<<8) bit 8 in medeleg is the ecallu delegation bit
+    LI(a4, 256)        //  (1<<8) bit 8 in medeleg is the ecallu delegation bit
     csrs medeleg, a4  //  set bit 8 in medeleg
     nop
 
     // update mie and sie bits
     csrc mstatus, t0
     nop
-    csrc mstatus, t1
+    csrc sstatus, t1
     nop
     // enter privilege mode being tested
     RVTEST_GOTO_LOWER_MODE Umode 
@@ -405,7 +411,7 @@ main:
     // update mie and sie bits
     csrs mstatus, t0
     nop
-    csrc mstatus, t1
+    csrc sstatus, t1
     nop
     // enter privilege mode being tested
     RVTEST_GOTO_LOWER_MODE Umode 
@@ -418,7 +424,7 @@ main:
     // update mie and sie bits
     csrc mstatus, t0
     nop
-    csrs mstatus, t1
+    csrs sstatus, t1
     nop
     // enter privilege mode being tested
     RVTEST_GOTO_LOWER_MODE Umode 
@@ -431,7 +437,7 @@ main:
     // update mie and sie bits
     csrs mstatus, t0
     nop
-    csrs mstatus, t1
+    csrs sstatus, t1
     nop
     // enter privilege mode being tested
     RVTEST_GOTO_LOWER_MODE Umode 
@@ -530,15 +536,18 @@ cp_medeleg:
     //   Total iterations = 19 (skips iterations 9-11):
     //   Iteration  0:    medeleg = all zeros
     //   Iterations 1-18: a walking 1 in the upper 32 bits (skips reserved bits 9-11)
-    //   Iteration  19:   medeleg = all ones
-    li   a1, 0                // Loop counter
-    li   a2, 20               // Total iterations + 1 (0's + 1's+ 17 walking ones)
-    li   a4, 0                // Initialize test value to 0 (all zeros test)
+    //   Iteration  19:   medeleg = {1011_0001_1111_1111}
+    LI(a1, 0)                // Loop counter
+    LI(a2, 20)               // Total iterations + 1 (0's + 1's+ 17 walking ones)
+    LI(a4, 0)                // Initialize test value to 0 (all zeros test)
 
 cp_medeleg_loop:
     bge  a1, a2, cp_medeleg_end   // Exit loop when a1 >= 19
 
     // Enter machine mode
+    # RVTEST_GOTO_SMODE   # M-mode 
+    RVTEST_GOTO_SMODE
+    nop
     RVTEST_GOTO_MMODE   # M-mode  
 
 
@@ -548,8 +557,24 @@ cp_medeleg_loop:
 
     // Enter test mode (stored in a3)
     mv   a0, a3
-    ecall
-    nop  
+    # ecall
+    # nop  
+    LI(t2, 0)
+    beq a0, t2, use_umode
+    LI(t2, 1)
+    beq a0, t2, use_smode
+    LI(t2, 3)
+    beq a0, t2, continue_cp_medeleg_loop  // Already in Mmode since we edit medeleg
+
+    use_umode:
+        RVTEST_GOTO_LOWER_MODE Umode
+        j continue_cp_medeleg_loop
+    use_smode:
+        RVTEST_GOTO_LOWER_MODE Smode
+        j continue_cp_medeleg_loop
+
+    continue_cp_medeleg_loop:
+
 
     /////////////////////////////////
     //cp_instr_adr_misaligned_jalr AND cp_stvec
@@ -658,7 +683,7 @@ cp_medeleg_loop:
     //cp_instr_access_fault
     /////////////////////////////////
 
-    li    t1, ACCESS_FAULT_ADDRESS       // Load the fault address into t0
+    LI(t1, ACCESS_FAULT_ADDRESS)       // Load the fault address into t0
     jalr  ra, t1, 0                      // Jump to the fault address (return address must be in ra)
     nop
 
@@ -675,11 +700,11 @@ cp_medeleg_loop:
     /////////////////////////////////
 
     // Load scratch address
-    la      t4, scratch
+    LA(t4, scratch)
 
     // Initialize loop counter (offset) from 0 to 7
-    li      t0, 0         // t0 = loop index (offset)
-    li      t5, 8         // loop limit (offsets 0 through 7)
+    LI(t0, 0)         // t0 = loop index (offset)
+    LI(t5, 8)         // loop limit (offsets 0 through 7)
 
 load_loop:
     // Compute effective address = base (t4) + current offset (t0)
@@ -719,7 +744,7 @@ load_loop:
     /////////////////////////////////
 
     // load the illegal address into a register
-    li    t0, ACCESS_FAULT_ADDRESS
+    LI(t0, ACCESS_FAULT_ADDRESS)
 
     lb t1, 0(t0)
     nop
@@ -746,18 +771,18 @@ load_loop:
     /////////////////////////////////
 
     // load scratch data address
-    la      t4, scratch
+    LA(t4, scratch)
 
     // Initialize loop counter (offset) from 0 to 7
-    li      t0, 0         // t0 = loop index (offset)
-    li      t5, 8         // loop limit (we will test offsets 0 through 7)
+    LI(t0, 0)         // t0 = loop index (offset)
+    LI(t5, 8)         // loop limit (we will test offsets 0 through 7)
 
 store_loop:
     // Compute effective address = base (t4) + current offset (t0)
     add     t1, t4, t0    // t1 = effective address with 3 LSBs = t0
 
     // Prepare a test value to store
-    li      t2, 0xDECAFCAB
+    LI(t2, 0xDECAFCAB)
 
     // Attempt store instructions at the misaligned effective address
     sb      t2, 0(t1)
@@ -784,27 +809,27 @@ store_loop:
     /////////////////////////////////
 
     // Load the illegal address into a register
-    la t0, ACCESS_FAULT_ADDRESS
+    LA(t0, ACCESS_FAULT_ADDRESS)
 
     // Attempt to store byte
-    li t1, 0xAB
+    LI(t1, 0xAB)
     sb t1, 0(t0)
     nop
 
     // Attempt to store halfword
-    li t2, 0xBEAD
+    LI(t2, 0xBEAD)
     sh t2, 0(t0)
     nop 
 
     // Attempt to store word
-    li t3, 0xADDEDCAB
+    LI(t3, 0xADDEDCAB)
     sw t3, 0(t0)
     nop 
 
     #ifdef __riscv_xlen
         #if __riscv_xlen == 64
 
-            li t4, 0xDEADBEEFDEADBEEF
+            LI(t4, 0xDEADBEEFDEADBEEF)
             sd t4, 0(t0)
             nop 
         #endif
@@ -838,11 +863,11 @@ store_loop:
     // Test misaligned priority for load instructions
 
     // load Instruction fault address
-    la      t4, ACCESS_FAULT_ADDRESS
+    LA(t4, ACCESS_FAULT_ADDRESS)
 
     // Initialize loop counter (offset) from 0 to 7
-    li      t0, 0         // t0 = loop index (offset)
-    li      t5, 8         // loop limit (we will test offsets 0 through 7)
+    LI(t0, 0)         // t0 = loop index (offset)
+    LI(t5, 8)         // loop limit (we will test offsets 0 through 7)
 
 load_loop_priority:
     // Compute effective address = base (t4) + current offset (t0)
@@ -880,25 +905,25 @@ load_loop_priority:
     // store priority misaligned test
 
     // Initialize loop counter (offset) from 0 to 7
-    li      t0, 0         // t0 = loop index (offset)
-    li      t5, 8         // loop limit (we will test offsets 0 through 7)
+    LI(t0, 0)         // t0 = loop index (offset)
+    LI(t5, 8)         // loop limit (we will test offsets 0 through 7)
 
 
     // Test misaligned priority for store instructions
 
     // Load access fault address
-    la      t4, ACCESS_FAULT_ADDRESS
+    LA(t4, ACCESS_FAULT_ADDRESS)
 
     // Initialize loop counter (offset) from 0 to 7
-    li      t0, 0         // t0 = loop index (offset)
-    li      t5, 8         // loop limit (we will test offsets 0 through 7)
+    LI(t0, 0)         // t0 = loop index (offset)
+    LI(t5, 8)         // loop limit (we will test offsets 0 through 7)
 
 store_loop_priority:
     // Compute misaligned address
     add     t1, t4, t0    // t1 = base address with 3 LSBs = t0
 
     // Prepare a test value to store
-    li      t2, 0xDECAFCAB
+    LI(t2, 0xDECAFCAB)
 
     // Attempt store instructions at the misaligned effective address
     sb      t2, 0(t1)
@@ -932,12 +957,12 @@ store_loop_priority:
     beq  a1, zero, update_first
 
     // Check if program's iteration is 9 (skip reserved medeleg bits)
-    li a6, 9
+    LI(a6, 9)
     beq  a6, a1, update_9
     nop
 
     // At the end of walks set applicable bits to 1 (first 11 writable bits)
-    li a6, 18
+    LI(a6, 18)
     beq  a6, a1, ones_update
     nop 
 
@@ -947,7 +972,7 @@ store_loop_priority:
 
     // Initialize walking 1 in medeleg after testing all zeros in medeleg
 update_first:
-    li a4, 1
+    LI(a4, 1)
 
 update_done:
     addi a1, a1, 1          // Increment loop counter
@@ -965,9 +990,10 @@ ones_update:
     // All reserved Medeleg bits are excluded.
     // The LSB is excluded since it is only writable
     // when extension ZCA is enabled.
-    li  a4, 0b1011000111111110
+    LI(a4, 0b1011000111111111)
     addi a1, a1, 1
     j  cp_medeleg_loop
+
 
 
 cp_medeleg_end:
